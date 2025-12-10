@@ -1,0 +1,9 @@
+__pycache__
+*.pickle
+logs/
+*.zip
+TIGRE*/
+dataGenerator/raw/
+dataGenerator/synthetic_dataset/
+.vscode/
+data/
