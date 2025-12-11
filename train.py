@@ -6,6 +6,7 @@ import imageio.v2 as iio
 import numpy as np
 from tqdm import tqdm
 import argparse
+import time
 
 
 def config_parser():

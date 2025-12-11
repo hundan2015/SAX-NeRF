@@ -144,6 +144,15 @@ class GPUTaskManager:
                         else f"✗ FAILED (code: {return_code})"
                     )
                     print(f"\n[Task {tid}] {status} | Name: {tname} | GPU {gid}")
+                    if return_code != 0:
+                        try:
+                            os.makedirs(self.logs_dir, exist_ok=True)
+                            fail_log_path = os.path.join(self.logs_dir, "failed_tasks.txt")
+                            timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+                            with open(fail_log_path, "a", encoding="utf-8") as f:
+                                f.write(f"{timestamp} | Task {tid} | Name: {tname} | GPU: {gid} | Return code: {return_code}\n")
+                        except Exception as log_err:
+                            print(f"[ERROR] Failed to record failure for task {tid}: {log_err}")
                     if gid is not None:
                         gpu_task_count[gid] -= 1
                     finished.append(proc)
@@ -233,7 +242,7 @@ def example_usage():
             "--bound",
             str(args.bound),
             "--line_size",
-            "4",
+            "2",
         ]
         cmd = shlex.join(cmd_args)
         manager.add_task(f"sax_nerf_{pickle_file_name}", cmd)
@@ -256,7 +265,7 @@ def example_usage():
             str(args.bound),
         ]
         nerf_cmd = shlex.join(nerf_cmd_args)
-        manager.add_task(f"nerf_{pickle_file_name}", nerf_cmd)
+        # manager.add_task(f"nerf_{pickle_file_name}", nerf_cmd)
 
         # Intratomo
         intratomo_output_dir = os.path.join(args.output, "intratomo", pickle_file_name)
@@ -276,7 +285,7 @@ def example_usage():
             str(args.bound),
         ]
         intratomo_cmd = shlex.join(intratomo_cmd_args)
-        manager.add_task(f"intratomo_{pickle_file_name}", intratomo_cmd)
+        # manager.add_task(f"intratomo_{pickle_file_name}", intratomo_cmd)
 
         # NAF
         naf_output_dir = os.path.join(args.output, "naf", pickle_file_name)
@@ -296,7 +305,7 @@ def example_usage():
             str(args.bound),
         ]
         naf_cmd = shlex.join(naf_cmd_args)
-        manager.add_task(f"naf_{pickle_file_name}", naf_cmd)
+        # manager.add_task(f"naf_{pickle_file_name}", naf_cmd)
 
         # TensoRF
         tensorf_output_dir = os.path.join(args.output, "tensorf", pickle_file_name)
@@ -316,7 +325,7 @@ def example_usage():
             str(args.bound),
         ]
         tensorf_cmd = shlex.join(tensorf_cmd_args)
-        manager.add_task(f"tensorf_{pickle_file_name}", tensorf_cmd)
+        # manager.add_task(f"tensorf_{pickle_file_name}", tensorf_cmd)
 
     # Run all tasks
     manager.run_all()
