@@ -39,4 +39,4 @@ train:
   window_num: 16
 log:
   i_eval: 250  # Epoch for evaluation
-  i_save: 500  # Epoch for saving
+  i_save: 1500  # Epoch for saving
