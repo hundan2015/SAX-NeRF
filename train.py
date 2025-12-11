@@ -1,3 +1,4 @@
+import csv
 import os
 import os.path as osp
 import torch
@@ -11,14 +12,16 @@ def config_parser():
     parser = argparse.ArgumentParser()
     # parser.add_argument("--config", default=f"./config/nerf/chest_50.yaml", help="configs file path")
     parser.add_argument("--config", default=f"./config/tensorf/chest_50.yaml", help="configs file path")
-    parser.add_argument("--gpu_id", default="5", help="gpu to use")
+    parser.add_argument("--expname", default="", help="")
+    parser.add_argument("--expdir", default="", help="")
+    parser.add_argument("--datadir", default="", help="")
+    parser.add_argument("--bound", type=float, default=0.3, help="")
     return parser
 
 parser = config_parser()
 args = parser.parse_args()
 
 os.environ["CUDA_DEVICE_ORDER"] = 'PCI_BUS_ID'
-os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu_id
 
 from src.config.configloading import load_config
 from src.render import render, run_network
@@ -43,6 +46,14 @@ class BasicTrainer(Trainer):
         """
         Basic network trainer.
         """
+        if args.expname:
+            cfg["exp"]["expname"] = args.expname
+        if args.expdir:
+            cfg["exp"]["expdir"] = args.expdir
+        if args.datadir:
+            cfg["exp"]["datadir"] = args.datadir
+
+        cfg["network"]["bound"] = args.bound
         super().__init__(cfg, device)
         print(f"[Start] exp: {cfg['exp']['expname']}, net: Basic network")
 
@@ -67,6 +78,7 @@ class BasicTrainer(Trainer):
         """
         Evaluation step
         """
+        self.eval_start.record()
         # Evaluate projection    渲染投射的 RGB 图
         projs = self.eval_dset.projs                 # [256, 256] -> [50, 256, 256]
         rays = self.eval_dset.rays.reshape(-1, 8)    # [65536,8]  -> [3276800, 8]
@@ -82,13 +94,33 @@ class BasicTrainer(Trainer):
         image_pred = run_network(self.eval_dset.voxels, self.net_fine if self.net_fine is not None else self.net, self.netchunk)
         # stx()
         image_pred = image_pred.squeeze()
+        self.eval_end.record()
+        torch.cuda.synchronize()
         # stx()
         loss = {
             "proj_psnr": get_psnr(projs_pred, projs),
-            # "proj_ssim": get_ssim(projs_pred, projs),
+            "proj_ssim": get_ssim(projs_pred, projs),
             "psnr_3d": get_psnr_3d(image_pred, image),
-            # "ssim_3d": get_ssim_3d(image_pred, image),
+            "ssim_3d": get_ssim_3d(image_pred, image),
+            "eval_time": torch.Tensor([self.eval_start.elapsed_time(self.eval_end)]),
+            "model_size": torch.Tensor(
+                [
+                    (self.net_fine.count_model_size if self.net_fine is not None else 0)
+                    + (self.net.count_model_size if self.net is not None else 0)
+                ]
+            ),
+            "total_train_time": torch.Tensor([time.time() - self.train_start_time]),
+            "current_allocated": torch.Tensor([torch.cuda.memory_allocated()]),
         }
+        if idx_epoch == 0:
+            with open(os.path.join(self.expdir, "count.csv"), "w") as f:
+                writer = csv.writer(f)
+                writer.writerow([x for x in loss.keys()])
+
+        with open(os.path.join(self.expdir, "count.csv"), "a") as f:
+            writer = csv.writer(f)
+            writer.writerow([x.item() for x in loss.values()])
+            
         if loss["psnr_3d"] > self.best_psnr_3d:
             torch.save(
                 {

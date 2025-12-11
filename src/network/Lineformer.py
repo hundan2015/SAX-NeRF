@@ -342,6 +342,27 @@ class Lineformer(nn.Module):
         
         return x
 
+    @property
+    def count_model_size(self):
+        """
+        统计当前模型在 GPU 上占用的显存（仅统计参数/缓冲区张量的存储，不含中间激活）。
+        """
+        def tensor_bytes(t):
+            return t.numel() * t.element_size()
+
+        params_bytes = 0
+        buffers_bytes = 0
+
+        for p in self.parameters(recurse=True):
+            if p.is_cuda:
+                params_bytes += tensor_bytes(p)
+
+        for b in self.buffers(recurse=True):
+            if b.is_cuda:
+                buffers_bytes += tensor_bytes(b)
+
+        total_bytes = params_bytes + buffers_bytes
+        return total_bytes
 
 '''配置文件中的实例参数
     network:

@@ -1,3 +1,4 @@
+import time
 import os
 import os.path as osp
 import json
@@ -100,6 +101,10 @@ class Trainer:
         # Summary writer 需要用tensorboard打开来看，不如直接就txt文件记录
         self.writer = SummaryWriter(self.expdir)
         self.writer.add_text("parameters", self.args2string(cfg), global_step=0)
+        self.total_train_time = 0.0
+        self.eval_start = torch.cuda.Event(enable_timing=True)
+        self.eval_end = torch.cuda.Event(enable_timing=True)
+        self.train_start_time = time.time()
 
     def args2string(self, hp):
         """
@@ -120,6 +125,9 @@ class Trainer:
         if self.epoch_start > 0:
             pbar.update(self.epoch_start*iter_per_epoch)        # 更新进度条
 
+        iter_start = torch.cuda.Event(enable_timing=True)
+        iter_end = torch.cuda.Event(enable_timing=True)
+
         for idx_epoch in range(self.epoch_start, self.epochs+1):
 
             # Evaluate
@@ -134,11 +142,20 @@ class Trainer:
             # Train
             # stx()
             for data in self.train_dloader:
+                iter_start.record()
                 self.global_step += 1
                 # Train
                 self.net.train()
                 loss_train = self.train_step(data, global_step=self.global_step, idx_epoch=idx_epoch)
-                pbar.set_description(f"epoch={idx_epoch}/{self.epochs}, loss={loss_train:.4g}, lr={self.optimizer.param_groups[0]['lr']:.4g}")
+                iter_end.record()
+                torch.cuda.synchronize()
+                self.total_train_time += iter_start.elapsed_time(iter_end)
+                pbar.set_description(
+                    f"epoch={idx_epoch}/{self.epochs},"
+                    + f" loss={loss_train:.3g},"
+                    + f" lr={self.optimizer.param_groups[0]['lr']:.3g},"
+                    + f" pure_train_time={self.total_train_time}"
+                )
                 pbar.update(1)
             
             if idx_epoch % 10 == 0:
