@@ -55,6 +55,7 @@ class BasicTrainer(Trainer):
             cfg["exp"]["datadir"] = args.datadir
 
         cfg["network"]["bound"] = args.bound
+        self.__is_first_epoch = True
         super().__init__(cfg, device)
         print(f"[Start] exp: {cfg['exp']['expname']}, net: Basic network")
 
@@ -111,17 +112,19 @@ class BasicTrainer(Trainer):
                 ]
             ),
             "total_train_time": torch.Tensor([time.time() - self.train_start_time]),
+            "pure_train_time": torch.Tensor([self.total_train_time]),
             "current_allocated": torch.Tensor([torch.cuda.memory_allocated()]),
         }
-        if idx_epoch == 0:
+        if idx_epoch == 0 or self.__is_first_epoch:
             with open(os.path.join(self.expdir, "count.csv"), "w") as f:
                 writer = csv.writer(f)
                 writer.writerow([x for x in loss.keys()])
+            self.__is_first_epoch = False
 
         with open(os.path.join(self.expdir, "count.csv"), "a") as f:
             writer = csv.writer(f)
             writer.writerow([x.item() for x in loss.values()])
-            
+
         if loss["psnr_3d"] > self.best_psnr_3d:
             torch.save(
                 {
@@ -134,7 +137,7 @@ class BasicTrainer(Trainer):
             )
             self.best_psnr_3d = loss["psnr_3d"]
             self.logger.info(f"best model update, epoch:{idx_epoch}, best 3d psnr:{self.best_psnr_3d:.4g}")
-        
+
         # stx()
 
         # Logging
@@ -169,11 +172,10 @@ class BasicTrainer(Trainer):
             iio.imwrite(osp.join(proj_pred_dir, f"proj_pred_{str(i)}.png"), ((1-cast_to_image(projs_pred[i]))*255).astype(np.uint8))
             iio.imwrite(osp.join(proj_gt_dir, f"proj_gt_{str(i)}.png"), ((1-cast_to_image(1-projs[i]))*255).astype(np.uint8))
 
-
         # stx()
         for ls in loss.keys():
             self.writer.add_scalar(f"eval/{ls}", loss[ls], global_step)
-            
+
         # Save
         # 保存各种视图
         eval_save_dir = osp.join(self.evaldir, f"epoch_{idx_epoch:05d}")
@@ -191,4 +193,3 @@ class BasicTrainer(Trainer):
 trainer = BasicTrainer()
 # 这并不是多线程中的start函数，而是父类Trainer中的start函数
 trainer.start() # loop train and evaluation
-        

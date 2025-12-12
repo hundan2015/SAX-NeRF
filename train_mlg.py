@@ -56,6 +56,7 @@ class BasicTrainer(Trainer):
             cfg["network"]["line_size"] = args.line_size
 
         cfg["network"]["bound"] = args.bound
+        self.__is_first_epoch = True
         super().__init__(cfg, device)
         print(f"[Start] exp: {cfg['exp']['expname']}, net: Basic network")
 
@@ -91,6 +92,7 @@ class BasicTrainer(Trainer):
         for i in tqdm(range(0, rays.shape[0], self.n_rays)):     # 每一簇射线是 n_rays ，每隔这么多射线渲染一次
             projs_pred.append(render(rays[i:i+self.n_rays], self.net, self.net_fine, **self.conf["render"])["acc"])
         projs_pred = torch.cat(projs_pred, 0).reshape(N, H, W)
+        self.logger.info(f"max projs_pred{projs_pred.max()}")
 
         # Evaluate density      渲染3D图像
         image = self.eval_dset.image
@@ -102,7 +104,8 @@ class BasicTrainer(Trainer):
         torch.cuda.synchronize()
         loss = {
             "proj_psnr": get_psnr(projs_pred, projs),
-            "proj_ssim": get_ssim(projs_pred, projs),
+            # "proj_ssim": get_ssim(projs_pred, projs),
+            "proj_ssim": torch.Tensor([0]),
             "psnr_3d": get_psnr_3d(image_pred, image),
             "ssim_3d": get_ssim_3d(image_pred, image),
             "eval_time": torch.Tensor([self.eval_start.elapsed_time(self.eval_end)]),
@@ -113,12 +116,14 @@ class BasicTrainer(Trainer):
                 ]
             ),
             "total_train_time": torch.Tensor([time.time() - self.train_start_time]),
+            "pure_train_time": torch.Tensor([self.total_train_time]),
             "current_allocated": torch.Tensor([torch.cuda.memory_allocated()]),
         }
-        if idx_epoch == 0:
+        if idx_epoch == 0 or self.__is_first_epoch:
             with open(os.path.join(self.expdir, "count.csv"), "w") as f:
                 writer = csv.writer(f)
                 writer.writerow([x for x in loss.keys()])
+            self.__is_first_epoch = False
 
         with open(os.path.join(self.expdir, "count.csv"), "a") as f:
             writer = csv.writer(f)
@@ -171,7 +176,7 @@ class BasicTrainer(Trainer):
 
         for ls in loss.keys():
             self.writer.add_scalar(f"eval/{ls}", loss[ls], global_step)
-            
+
         # Save
         # 保存各种视图
         eval_save_dir = osp.join(self.evaldir, f"epoch_{idx_epoch:05d}")
